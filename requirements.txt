@@ -1,0 +1,12 @@
+flask
+flask-cors
+numpy==1.26.4
+pandas
+pillow
+deepface
+transformers
+scikit-learn
+torch
+yt-dlp
+h5py
+opencv-python 

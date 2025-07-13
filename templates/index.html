@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Analysis Tool</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f6f8fa;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      background: #fff;
+      max-width: 480px;
+      margin: 48px auto 0 auto;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 32px 32px 24px 32px;
+    }
+    h2 {
+      text-align: center;
+      color: #222;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      margin-top: 18px;
+      margin-bottom: 6px;
+      font-weight: 500;
+      color: #333;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 1rem;
+      background: #f9fafb;
+      transition: border 0.2s;
+    }
+    input[type="text"]:focus, input[type="number"]:focus {
+      border: 1.5px solid #4f8cff;
+      outline: none;
+      background: #fff;
+    }
+    button[type="submit"] {
+      width: 100%;
+      background: #4f8cff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 14px 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-top: 28px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button[type="submit"]:hover {
+      background: #2563eb;
+    }
+    .progress {
+      background: #e5e7eb;
+      height: 22px;
+      border-radius: 6px;
+      margin: 18px 0 8px 0;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .progress-bar {
+      background: linear-gradient(90deg, #4f8cff 60%, #2563eb 100%);
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.5s;
+    }
+    .status {
+      font-size: 1.05rem;
+      color: #444;
+      margin-bottom: 4px;
+      min-height: 24px;
+    }
+    .downloads {
+      margin-top: 28px;
+      text-align: center;
+    }
+    .downloads button {
+      background: #22c55e;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 1rem;
+      font-weight: 500;
+      margin: 0 8px 8px 0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .downloads button:hover {
+      background: #15803d;
+    }
+    .error {
+      color: #dc2626;
+      margin-top: 18px;
+      text-align: center;
+      font-weight: 500;
+    }
+    @media (max-width: 600px) {
+      .container { padding: 18px 6vw 18px 6vw; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Video Analysis Tool</h2>
+    <form method="post" action="/analyze" id="analyzeForm" autocomplete="off">
+      <label for="url">YouTube URL<span style="color:#dc2626">*</span></label>
+      <input type="text" name="url" id="url" required placeholder="e.g. https://www.youtube.com/watch?v=...">
+      <label for="start_time">Start Time (seconds)<span style="color:#dc2626">*</span></label>
+      <input type="number" name="start_time" id="start_time" min="0" required placeholder="e.g. 10">
+      <label for="end_time">End Time (seconds)<span style="color:#dc2626">*</span></label>
+      <input type="number" name="end_time" id="end_time" min="0" required placeholder="e.g. 100">
+      <label for="fps">Frames Per Second (FPS)<span style="color:#dc2626">*</span></label>
+      <input type="number" name="fps" id="fps" min="1" required placeholder="e.g. 1">
+      <button type="submit">Start Analysis</button>
+    </form>
+    <div class="status" id="status"></div>
+    <div class="progress" id="progress" style="display:none;">
+      <div class="progress-bar" id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="downloads" id="downloads"></div>
+    <div class="error" id="error"></div>
+  </div>
+  <script>
+    const form = document.getElementById('analyzeForm');
+    const statusDiv = document.getElementById('status');
+    const progressDiv = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+    const downloadsDiv = document.getElementById('downloads');
+    const errorDiv = document.getElementById('error');
+    let jobId = null;
+    let pollInterval = null;
+
+    // Map backend status to user-friendly messages
+    const statusMessages = {
+      queued: 'Job queued... Waiting to start.',
+      downloading: 'Downloading video...',
+      extracting_frames: 'Extracting frames from video...',
+      deepface_analysis: 'Analyzing faces (age, gender, emotion)...',
+      clip_classification: 'Classifying scenes with AI...',
+      palette_extraction: 'Extracting color palettes...',
+      summary: 'Creating summary and saving results...',
+      done: '✅ Analysis complete! Download your results below.',
+      error: '❌ An error occurred.'
+    };
+
+    form.onsubmit = async function(e) {
+      e.preventDefault();
+      statusDiv.textContent = 'Starting analysis...';
+      progressDiv.style.display = 'block';
+      progressBar.style.width = '0%';
+      downloadsDiv.innerHTML = '';
+      errorDiv.textContent = '';
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+      const res = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await res.json();
+      if (result.job_id) {
+        jobId = result.job_id;
+        pollProgress();
+      } else {
+        errorDiv.textContent = 'Failed to start job.';
+      }
+    };
+
+    function pollProgress() {
+      pollInterval = setInterval(async () => {
+        const res = await fetch(`/progress/${jobId}`);
+        const data = await res.json();
+        let msg = statusMessages[data.status] || ('Status: ' + data.status);
+        statusDiv.textContent = msg;
+        progressBar.style.width = `${Math.round((data.progress || 0) * 100)}%`;
+        if (data.status === 'done') {
+          clearInterval(pollInterval);
+          downloadsDiv.innerHTML = `
+            <h4>Download Results:</h4>
+            <button onclick="window.location='/download/${jobId}/video'">Download Video</button>
+            <button onclick="window.location='/download/${jobId}/summary'">Download Summary CSV</button>
+            <button onclick="window.location='/download/${jobId}/frame_analysis'">Download Frame Analysis CSV</button>
+          `;
+        }
+        if (data.status === 'error') {
+          clearInterval(pollInterval);
+          errorDiv.textContent = data.error || 'Unknown error';
+        }
+      }, 2000);
+    }
+  </script>
+</body>
+</html> 
