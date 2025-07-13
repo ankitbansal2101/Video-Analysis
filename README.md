@@ -19,8 +19,8 @@ This project provides a web-based tool for analyzing YouTube videos using face a
 
 ### 1. Clone the repository
 ```
-git clone <repo-url>
-cd <repo-folder>
+git clone https://github.com/ankitbansal2101/Video-Analysis
+cd Video-Analysis
 ```
 
 ### 2. Install dependencies
